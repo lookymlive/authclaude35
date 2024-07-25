@@ -1,0 +1,67 @@
+// backend/src/routes/auth.js
+import express from 'express';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import User from '../models/User.js';
+import passport from '../config/passport.js';
+
+const router = express.Router();
+
+// Registro local
+router.post('/register', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: 'El usuario ya existe' });
+    }
+    const hashedPassword = await bcrypt.hash(password, 12);
+    const user = new User({ email, password: hashedPassword });
+    await user.save();
+    res.status(201).json({ message: 'Usuario registrado exitosamente' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error en el servidor' });
+  }
+});
+
+// Inicio de sesión local
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ message: 'Credenciales inválidas' });
+    }
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Credenciales inválidas' });
+    }
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    res.json({ token, userId: user._id });
+  } catch (error) {
+    res.status(500).json({ message: 'Error en el servidor' });
+  }
+});
+router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+
+router.get('/google/callback', 
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  (req, res) => {
+    // Generar y enviar un token JWT aquí
+    const token = jwt.sign({ id: req.user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    res.redirect(`http://localhost:3000/dashboard?token=${token}`);
+  }
+);
+router.get('/instagram', passport.authenticate('instagram'));
+
+router.get('/instagram/callback', 
+  passport.authenticate('instagram', { failureRedirect: '/login' }),
+  (req, res) => {
+    // Generar y enviar un token JWT aquí
+    const token = jwt.sign({ id: req.user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    res.redirect(`http://localhost:3000/dashboard?token=${token}`);
+  }
+);
+
+
+export default router;
